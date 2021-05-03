@@ -1,0 +1,154 @@
+README ASC HW 2
+Nuta Mihaela-Madalina
+334CB
+
+	For testing purposes, I used the script 'script_rulare.sh' which is
+in the archive.
+
+
+	The homework contains 3 ways to compute: C = A × B × Bt + At × A, where
+A and B are 2 NxN matrices.
+
+-------------------------------------------------------------------------------
+					Descriptions of the 3 methods							  |
+-------------------------------------------------------------------------------
+1. solver_neopt.c
+	We first compute the operation A x B, where A is an upper triangle
+matrix.
+	We use the "multiplyASupTrB" functions, which is a basic multiply
+function with three nested loops. The only difference is that the third for
+starts from a specified value, which is "start_k", that is, at first, 0.
+	Because A is an upper triangle matrix, we start to use less elements
+line by line and with every line, the "start_k" variable increases, so we can
+skip the elements that will be anyway 0.
+	The result of A x B is now stored in the C matrix. We now use the
+"multiplyABt" function which computes C x B**t. The function is a basic
+multiply function with 3 nested loops, but the indexes from B (that should be
+transposed,are switched now), so that the result element at the position
+[i][j] uses the element B[j][k] instead of B[k][j].
+	Next, we compute A**t x A with "multiplyAInfTrBSupTr". The function
+uses the fact that A**t is a lower triangle matrix and A is an upper triangle
+matrix. We limit the maximum elements that will be used by the minimum
+between i and j + 1.
+	Example: if we have N = 3, i = 2 and j = 1, in the first
+matrix will be 3 non zero elements (in a line) and in the second matrix will be
+2 non zero elements, so the limit for k would be j + 1 = 2. We do not have to
+loop all the way through all the elements. The column represented by j is also
+limited by a minimum, because with every line, we do not have to compute all
+the elements.
+	Example: if the matrix A is:
+	a b d
+	0 c e
+	0 0 f
+	
+	and A**t is:
+	a 0 0
+	b c 0
+	d e f
+	
+	then A**t x A is
+	aa     ab       ad
+	ba  bb + cc  bd + ce
+	ad  bd + ce  dd + ee + ff
+	At the end, the partial results are stored in D and E, which will be
+gathered into C.
+
+2. solver_opt.c
+	Uses the same code from solver_neopt.c, but with some differences that
+are speed improvements (modified only the constant from time complexity).
+
+	In all of the 3 functions I used a register variable to store the
+computed value and then stored it in the result matrix. The "register" keyword
+helps the compiler and the variable is stored in a register instead of memory,
+so the program does not have to access memory in a for loop.
+
+	In the 'multiplyASupTrB' function I used 3 pointers:
+	- orig_pa : represents the start of the line
+	- pa: represents the current position in the line which is increased
+	by k with one
+	- pb: represents the current position in the column which is increased
+	by k with line size
+
+	In the 'multiplyABt' function I used 4 pointers:
+	- orig_pa: the start of the line
+	- orig_pb: the first element of the matrix
+	- pa: the position in line
+	- pb:the position in column which is increased with every k with one
+	and with every j with N
+	Those calculations of the position of th pointers derived from this
+	formula: C[i * N + j] += A[i * N + k] * B[j * N + k];
+
+	In the 'multiplyAInfTrBSupTr' function I used only the register
+improvement.
+
+3. solver_blas.c
+	I used the documentation from: http://www.netlib.org/blas/
+
+	1. I did the "B * B**t" operation first. I used "cblas_dgemm" function:
+matrix-matrix multiply, specifying that the second matrix is transposed.
+The result is stored in C
+
+	2. I did the A * C operation specifying that the first matrix is an upper
+triangle matrix (which is A). I used 'cblas_dtrmm' function. The 'CblasLeft'
+argument means that the order is A, C. The result is stored in C
+
+	3. I did the A**t * A with 'cblas_dtrmm' specifying that the A**t matrix
+is a lower triangle matrix. The result is stored in A (the second matrix)
+
+	4. I added to C the elements from A. The final result is in C.
+
+
+-------------------------------------------------------------------------------
+								Cachegrind									  |
+-------------------------------------------------------------------------------
+
+Cachegrind:
+	valgrind --tool=cachegrind --branch-sim=yes  ./tema2_blas
+		/export/asc/tema2/input_valgrind 2> blas.cache
+	valgrind --tool=cachegrind --branch-sim=yes  ./tema2_neopt
+		/export/asc/tema2/input_valgrind 2> neopt.cache
+	valgrind --tool=cachegrind --branch-sim=yes  ./tema2_opt_m
+		/export/asc/tema2/input_valgrind 2> opt_m.cache
+
+I will compare the second and third outputs (unoptimized  and optimized):
+
+	Value							unoptimized			optimized
+
+Number of executed instructions:	4,955,732,616		1,712,430,295
+Number of data accesses:			2,472,796,174		1,096,959,115
+Data (memory) read:					2,362,903,873		1,071,758,680
+Data (memory) write:				109,892,301			25,200,435
+
+The data miss rate and number of misses are almost the same.
+The number of branches and the mispredicts are almost the same.
+So it looks like the optimized version have less number of executed instructions,
+less number of reads/writes from/to memory.
+
+The blas atlas version is much better than the other 2:
+
+	Value				    blas
+
+Number of executed instructions:	191,409,700
+Number of data accesses:			75,120,166
+Data (memory) read:					70,179,679
+Data (memory) write:				4,940,487
+Data miss rate:						1.9%
+Number of branches:					3,923,070 (vs optimized 110,323,273)
+Mispred rate:						1% (vs optimized 0.4%)
+
+
+-------------------------------------------------------------------------------
+						Comparative analysis of performance					  |
+-------------------------------------------------------------------------------
+	The archive includes a .jpg file format image containing the running time
+depending on the size of the matrix for each solution, which means that the X
+axis represents the size of matrix and the Y axis represents the running time
+in seconds.
+	In the chart, it is seen that the best running time is the third, from the
+Blas method. The worst is the unoptimized version.
+	The chart contains running times for the solutions using 5 values of the
+dimension of the matrix: 400, 600, 800, 1200, 1400.
+	The color blue represents the unoptimized solution, the color orange
+represents the optimized solution and the color gray represents the blas
+solution.
+	It is shown also here that the best solution is the blas solution.
